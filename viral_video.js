@@ -54,27 +54,43 @@ async function generateImage(prompt, outPath) {
 
 function pythonVideo(imagePath, prompt, outPath) {
   const py = `
-import sys, time
+import sys, time, shutil
 from gradio_client import Client, handle_file
 image_path, prompt, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
-client = Client("multimodalart/wan2-1-fast")
-result = client.predict(
-    handle_file(image_path),
-    prompt,
-    512,
-    896,
-    "",
-    2.0,
-    1.0,
-    4,
-    42,
-    True,
-    api_name="/generate_video"
-)
-video_path = result[0] if isinstance(result, (list, tuple)) else result
-import shutil
-shutil.copyfile(video_path, out_path)
-print(out_path)
+
+last_error = None
+for attempt in range(1, 4):
+    try:
+        print(f"ZeroGPU video attempt {attempt}/3")
+        client = Client("multimodalart/wan2-1-fast")
+        result = client.predict(
+            handle_file(image_path),
+            prompt[:1800],
+            480,
+            832,
+            "",
+            2.0,
+            1.0,
+            4,
+            42,
+            True,
+            api_name="/generate_video"
+        )
+        video_path = result[0] if isinstance(result, (list, tuple)) else result
+        if isinstance(video_path, dict):
+            video_path = video_path.get("path") or video_path.get("url")
+        if not video_path:
+            raise RuntimeError(f"ZeroGPU returned no video: {result}")
+        shutil.copyfile(video_path, out_path)
+        print(out_path)
+        break
+    except Exception as e:
+        last_error = e
+        print(f"ZeroGPU attempt {attempt} failed: {type(e).__name__}: {e}")
+        if attempt < 3:
+            time.sleep(8 * attempt)
+else:
+    raise last_error
 `;
   fs.writeFileSync('/tmp/make_video.py', py);
   execFileSync('python', ['/tmp/make_video.py', imagePath, prompt, outPath], { stdio: 'inherit' });
