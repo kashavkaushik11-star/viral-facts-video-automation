@@ -22,7 +22,7 @@ async function askGemini(prompt) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 450 }
+          generationConfig: { temperature: 0.7, maxOutputTokens: 300 }
         })
       });
       if (r.ok) {
@@ -146,23 +146,33 @@ function buildReel(imagePath, aiVideoPath, audioPath, srtPath, finalPath) {
   runFfmpeg(['-i', visualVideo, '-i', audioPath, '-vf', subtitleFilter, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-movflags', '+faststart', finalPath]);
 }
 
+function fallbackVisualPrompt(fact) {
+  return `A photorealistic cinematic scene that clearly illustrates this psychology idea: ${fact}. Show one ordinary person in a realistic everyday environment performing one clear action that visually communicates the idea. Subtle natural camera movement, realistic lighting, shallow depth of field, believable human emotion, documentary-film mood, main subject centered for vertical 9:16 cropping, no text, letters, numbers, logos or captions.`;
+}
+
 (async () => {
   const outDir = path.join(process.cwd(), 'output');
   fs.mkdirSync(outDir, { recursive: true });
 
-  // One Gemini request creates both the Hindi voice script and the visual prompt.
-  // This halves Gemini quota usage and makes the free-tier workflow more reliable.
-  const combined = await askGemini(`Create ONE highly shareable psychology/human-behaviour fact for a Hindi Facebook Reel. It must be surprising but factually responsible. Return exactly two sections using these markers and nothing else:
-FACT:
-50-70 words in natural spoken Hindi using Devanagari script. Start with a strong spoken hook. Do not invent statistics, medical claims or fake research. End with one natural question.
-VISUAL:
-40-70 words in English. Describe one photorealistic cinematic scene that visually represents the fact, one clear action, subtle camera movement, realistic lighting, depth and mood. Keep the main subject centered for vertical 9:16 cropping. No text, letters, numbers, logos or captions in the scene.`);
+  // One Gemini request creates both the Hindi voice script and visual prompt.
+  // The parser is intentionally tolerant: if Gemini returns only FACT, a local visual prompt is generated.
+  const combined = await askGemini(`Create ONE highly shareable psychology/human-behaviour fact for a Hindi Facebook Reel. It must be surprising but factually responsible. Return exactly two sections:
+FACT: 45-60 words in natural spoken Hindi using Devanagari script. Start with a strong spoken hook. Do not invent statistics, medical claims or fake research. End with one natural question.
+VISUAL: 25-40 words in English. Describe one photorealistic cinematic scene that visually represents the fact, one clear action, realistic lighting, depth and mood. Keep the main subject centered for vertical 9:16 cropping. No text, letters, numbers, logos or captions.`);
 
-  const factMatch = combined.match(/FACT:\s*([\s\S]*?)\s*VISUAL:/i);
-  const visualMatch = combined.match(/VISUAL:\s*([\s\S]*)$/i);
+  const factMatch = combined.match(/(?:^|\n)\s*FACT\s*:\s*([\s\S]*?)(?=\n\s*(?:VISUAL|VISUAL PROMPT)\s*:|$)/i);
+  const visualMatch = combined.match(/(?:^|\n)\s*(?:VISUAL|VISUAL PROMPT)\s*:\s*([\s\S]*)$/i);
   const fact = factMatch?.[1]?.trim();
-  const visual = visualMatch?.[1]?.trim();
-  if (!fact || !visual) throw new Error(`Gemini returned an unexpected format: ${combined.slice(0, 1000)}`);
+  let visual = visualMatch?.[1]?.trim();
+
+  if (!fact) {
+    throw new Error(`Gemini did not return a FACT section: ${combined.slice(0, 1000)}`);
+  }
+
+  if (!visual) {
+    console.log('Gemini visual section missing; using local visual prompt fallback.');
+    visual = fallbackVisualPrompt(fact);
+  }
 
   const imagePrompt = `Photorealistic cinematic social-media scene designed for a vertical 9:16 crop. Main subject centered and clearly visible. ${visual}. Natural realistic people and environment, believable dramatic lighting, shallow depth of field, premium documentary-film look, strong composition, no text, no letters, no numbers, no logos, no watermark, no captions, no borders, no collage.`;
   const imagePath = path.join(outDir, 'viral_fact.png'), aiVideoPath = path.join(outDir, 'ai_motion.mp4'), audioPath = path.join(outDir, 'hindi_voice.mp3'), srtPath = path.join(outDir, 'captions.srt'), finalPath = path.join(outDir, 'viral_fact_reel.mp4');
