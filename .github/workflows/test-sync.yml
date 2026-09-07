@@ -1,0 +1,47 @@
+name: Caption Sync Test
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install FFmpeg and fonts
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-core fontconfig && fc-cache -f -v
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Apply caption voice-sync fix
+        run: python sync_caption_patch.py
+
+      - name: Generate synced video
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node viral_video.js
+
+      - name: Upload synced video
+        uses: actions/upload-artifact@v4
+        with:
+          name: viral-facts-synced-video
+          path: output/
+          retention-days: 3
