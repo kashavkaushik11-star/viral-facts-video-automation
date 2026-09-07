@@ -152,10 +152,21 @@ function createSrt(text, duration, outPath) {
   const totalChars = pieces.reduce((sum, s) => sum + Math.max(1, s.length), 0);
   let cursor = 0;
   const blocks = [];
-  pieces.forEach((piece, index) => {
+  let index = 0;
+  pieces.forEach((piece) => {
     const pieceDuration = duration * (Math.max(1, piece.length) / totalChars);
-    const start = cursor, end = index === pieces.length - 1 ? duration : Math.min(duration, cursor + pieceDuration);
-    blocks.push(`${index + 1}\n${srtTime(start)} --> ${srtTime(end)}\n${wrapCaption(piece)}\n`);
+    const start = cursor;
+    const end = cursor + pieceDuration;
+    const chars = Array.from(piece);
+    const typeTime = Math.min(pieceDuration * 0.72, Math.max(0.8, chars.length * 0.045));
+    const step = typeTime / Math.max(1, chars.length);
+    for (let i = 1; i <= chars.length; i++) {
+      const cueStart = start + (i - 1) * step;
+      const cueEnd = i === chars.length ? end : start + i * step;
+      const visible = chars.slice(0, i).join('');
+      index++;
+      blocks.push(`${index}\n${srtTime(cueStart)} --> ${srtTime(cueEnd)}\n${wrapCaption(visible)}\n`);
+    }
     cursor = end;
   });
   fs.writeFileSync(outPath, blocks.join('\n'), 'utf8');
@@ -170,7 +181,7 @@ function buildReel(imagePath, aiVideoPath, audioPath, srtPath, finalPath) {
   console.log(`Voice duration: ${audioDuration.toFixed(2)}s`);
   console.log(`Wan motion duration: ${sourceAiDuration.toFixed(2)}s; looping motion for the full ${audioDuration.toFixed(2)}s reel.`);
   runFfmpeg(['-stream_loop', '-1', '-i', aiVideoPath, '-t', audioDuration.toFixed(2), '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,format=yuv420p', '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', visualVideo]);
-  const subtitleFilter = `subtitles=${srtPath}:force_style='FontName=DejaVu Sans,FontSize=12,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,Outline=1,Shadow=0,Alignment=2,MarginV=55,WrapStyle=2,BorderStyle=1,Spacing=0'`;
+  const subtitleFilter = `subtitles=${srtPath}:force_style='FontName=DejaVu Sans,FontSize=10,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,Outline=1,Shadow=0,Alignment=2,MarginV=55,WrapStyle=2,BorderStyle=1,Spacing=0'`;
   runFfmpeg(['-i', visualVideo, '-i', audioPath, '-vf', subtitleFilter, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-movflags', '+faststart', finalPath]);
 }
 
