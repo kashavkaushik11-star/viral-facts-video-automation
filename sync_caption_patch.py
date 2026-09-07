@@ -101,11 +101,12 @@ s4, n3 = re.subn(r'createSrt\(caption, audioDuration, srtPath\);', lambda m: 'cr
 if n3 != 1:
     raise SystemExit(f'createSrt call replacement failed: {n3}')
 
-old_prompt = '''CAPTION:\n20-35 words in simple Roman-script Hinglish summarizing the same fact. Use easy words, no Devanagari, no emojis, no hashtags, no English-only sentence. Keep it short enough for small bottom captions.'''
-new_prompt = '''CAPTION:\nWrite a Roman-script Hinglish transcription of the FACT for on-screen captions. Preserve the EXACT same spoken word order and the SAME number of words as FACT (one Roman-Hinglish word for each spoken Hindi word), with the same meaning and punctuation. Do NOT summarize, shorten, expand, or reorder anything. Use only simple Roman letters and spaces, no Devanagari, no emojis, no hashtags. Keep the wording natural to spoken Hindi.'''
-if old_prompt not in s4:
+# Replace any existing CAPTION instruction block robustly, regardless of the exact old wording.
+caption_pattern = r'CAPTION:\\n.*?\\nVISUAL:'
+new_prompt = '''CAPTION:\\nWrite a Roman-script Hinglish transcription of the FACT for on-screen captions. Preserve the EXACT same spoken word order and the SAME number of words as FACT (one Roman-Hinglish word for each spoken Hindi word), with the same meaning and punctuation. Do NOT summarize, shorten, expand, or reorder anything. Use only simple Roman letters and spaces, no Devanagari, no emojis, no hashtags. Keep the wording natural to spoken Hindi.\\nVISUAL:'''
+s5, n4 = re.subn(caption_pattern, lambda m: new_prompt, s4, count=1, flags=re.S)
+if n4 != 1:
     raise SystemExit('CAPTION prompt replacement failed')
-s5 = s4.replace(old_prompt, new_prompt)
 
 p.write_text(s5, encoding='utf-8')
 print('Applied real TTS word-boundary caption sync + 9px typewriter captions.')
