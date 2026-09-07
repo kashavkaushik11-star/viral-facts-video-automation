@@ -59,21 +59,20 @@ from gradio_client import Client, handle_file
 image_path, prompt, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
 
 last_error = None
-for attempt in range(1, 4):
+for attempt in range(1, 3):
     try:
-        print(f"ZeroGPU video attempt {attempt}/3")
-        client = Client("multimodalart/wan2-1-fast")
+        print(f"ZeroGPU Wan2.2 video attempt {attempt}/2")
+        client = Client("zerogpu-aoti/wan2-2-fp8da-aoti-faster")
         result = client.predict(
             handle_file(image_path),
-            prompt[:1800],
-            480,
-            832,
+            prompt[:1200],
+            4,
             "",
             2.0,
             1.0,
-            4,
+            1.0,
             42,
-            True,
+            False,
             api_name="/generate_video"
         )
         video_path = result[0] if isinstance(result, (list, tuple)) else result
@@ -86,9 +85,9 @@ for attempt in range(1, 4):
         break
     except Exception as e:
         last_error = e
-        print(f"ZeroGPU attempt {attempt} failed: {type(e).__name__}: {e}")
-        if attempt < 3:
-            time.sleep(8 * attempt)
+        print(f"ZeroGPU Wan2.2 attempt {attempt} failed: {type(e).__name__}: {e}")
+        if attempt < 2:
+            time.sleep(6)
 else:
     raise last_error
 `;
@@ -102,7 +101,7 @@ else:
 
   const fact = await askGemini(`Create ONE highly shareable, surprising but factually responsible psychology/human-behaviour fact for a Hindi/Hinglish Facebook Reel. 45-70 words. Start with a strong hook. Do not invent statistics or medical claims. End with a natural question that invites opinions, not engagement bait. Return only the final caption.`);
 
-  const visual = await askGemini(`Turn this short Hindi/Hinglish psychology fact into a cinematic visual direction for a 2-second image-to-video clip. No text in the image. Describe one realistic scene, subject, action, lighting, camera movement, depth and mood. Keep it visually understandable and safe. Fact: ${fact}`);
+  const visual = await askGemini(`Turn this short Hindi/Hinglish psychology fact into ONE concise image-to-video prompt for a 2-second cinematic clip. Return ONLY the prompt, no heading, no markdown, no bullets. 40-80 words. Describe one realistic scene, one clear human/object action, subtle camera movement, lighting, depth and mood. No text, letters, numbers, logos or captions in the scene. Keep it visually understandable and safe. Fact: ${fact}`);
 
   const imagePrompt = `Photorealistic cinematic vertical social-media scene. ${visual}. Natural realistic people and environment, dramatic but believable lighting, shallow depth of field, premium documentary-film look, strong composition, no text, no letters, no numbers, no logos, no watermark, no captions, no borders, no collage.`;
 
@@ -112,7 +111,7 @@ else:
 
   console.log('Generating image...');
   await generateImage(imagePrompt, imagePath);
-  console.log('Generating video with free Hugging Face ZeroGPU Space...');
+  console.log('Generating video with Wan 2.2 Fast on free Hugging Face ZeroGPU...');
   pythonVideo(imagePath, visual, videoPath);
   console.log('DONE:', videoPath);
 })();
