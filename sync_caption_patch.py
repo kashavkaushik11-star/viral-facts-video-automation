@@ -13,7 +13,9 @@ out_path = sys.argv[2]
 timing_path = out_path + ".words.json"
 
 async def main():
-    communicate = edge_tts.Communicate(text, "hi-IN-SwaraNeural", rate="-5%", pitch="+0Hz", volume="+0%")
+    # Explicitly request WordBoundary metadata. Without this, edge-tts
+    # defaults to sentence boundaries and no word timings are returned.
+    communicate = edge_tts.Communicate(text, "hi-IN-SwaraNeural", rate="-5%", pitch="+0Hz", volume="+0%", boundary="WordBoundary")
     audio = bytearray()
     words = []
     async for item in communicate.stream():
@@ -117,4 +119,4 @@ if n4 != 1:
     raise SystemExit('CAPTION prompt replacement failed')
 
 p.write_text(s5, encoding='utf-8')
-print('Applied hardened real TTS word-boundary sync + 9px typewriter captions.')
+print('Applied explicit WordBoundary TTS sync + 9px typewriter captions.')
