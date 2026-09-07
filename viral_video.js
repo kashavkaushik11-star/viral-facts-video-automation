@@ -22,22 +22,23 @@ async function askGemini(prompt) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 300 }
+          generationConfig: { temperature: 0.7, maxOutputTokens: 450 }
         })
       });
       if (r.ok) {
         const data = await r.json();
         const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('')?.trim() || '';
         if (text) return text;
+      } else {
+        const errorText = await r.text();
+        lastError = `${model} ${r.status}: ${errorText}`;
+        if (![429, 500, 502, 503, 504].includes(r.status)) break;
+        let waitMs = Math.min(15000, attempt * 5000);
+        const retryMatch = errorText.match(/retryDelay[^\d]*(\d+)s/i);
+        if (retryMatch) waitMs = Math.min(15000, Number(retryMatch[1]) * 1000);
+        console.log(`Gemini ${model} attempt ${attempt} returned ${r.status}; waiting ${Math.ceil(waitMs / 1000)}s...`);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
       }
-      const errorText = await r.text();
-      lastError = `${model} ${r.status}: ${errorText}`;
-      if (![429, 500, 502, 503, 504].includes(r.status)) break;
-      let waitMs = Math.min(15000, attempt * 5000);
-      const retryMatch = errorText.match(/retryDelay[^\d]*(\d+)s/i);
-      if (retryMatch) waitMs = Math.min(15000, Number(retryMatch[1]) * 1000);
-      console.log(`Gemini ${model} attempt ${attempt} returned ${r.status}; waiting ${Math.ceil(waitMs / 1000)}s...`);
-      await new Promise(resolve => setTimeout(resolve, waitMs));
     }
   }
   throw new Error(`Gemini unavailable after model fallback: ${lastError}`);
@@ -148,8 +149,21 @@ function buildReel(imagePath, aiVideoPath, audioPath, srtPath, finalPath) {
 (async () => {
   const outDir = path.join(process.cwd(), 'output');
   fs.mkdirSync(outDir, { recursive: true });
-  const fact = await askGemini(`Create ONE highly shareable, surprising but factually responsible psychology/human-behaviour fact for a Hindi Facebook Reel. Write 50-70 words in natural spoken Hindi using Devanagari script. Start with a strong spoken hook. Do not invent statistics, medical claims or fake research. Explain the fact simply and end with one natural question. Return ONLY the voice-over script, no heading, no hashtags, no markdown.`);
-  const visual = await askGemini(`Turn this Hindi psychology fact into ONE concise image-to-video prompt. Return ONLY the prompt, no heading or markdown. 40-70 words. Describe one photorealistic cinematic scene, one clear action, subtle camera movement, realistic lighting, depth and mood. Keep the main subject centered for vertical 9:16 cropping. No text, letters, numbers, logos or captions in the scene. Fact: ${fact}`);
+
+  // One Gemini request creates both the Hindi voice script and the visual prompt.
+  // This halves Gemini quota usage and makes the free-tier workflow more reliable.
+  const combined = await askGemini(`Create ONE highly shareable psychology/human-behaviour fact for a Hindi Facebook Reel. It must be surprising but factually responsible. Return exactly two sections using these markers and nothing else:
+FACT:
+50-70 words in natural spoken Hindi using Devanagari script. Start with a strong spoken hook. Do not invent statistics, medical claims or fake research. End with one natural question.
+VISUAL:
+40-70 words in English. Describe one photorealistic cinematic scene that visually represents the fact, one clear action, subtle camera movement, realistic lighting, depth and mood. Keep the main subject centered for vertical 9:16 cropping. No text, letters, numbers, logos or captions in the scene.`);
+
+  const factMatch = combined.match(/FACT:\s*([\s\S]*?)\s*VISUAL:/i);
+  const visualMatch = combined.match(/VISUAL:\s*([\s\S]*)$/i);
+  const fact = factMatch?.[1]?.trim();
+  const visual = visualMatch?.[1]?.trim();
+  if (!fact || !visual) throw new Error(`Gemini returned an unexpected format: ${combined.slice(0, 1000)}`);
+
   const imagePrompt = `Photorealistic cinematic social-media scene designed for a vertical 9:16 crop. Main subject centered and clearly visible. ${visual}. Natural realistic people and environment, believable dramatic lighting, shallow depth of field, premium documentary-film look, strong composition, no text, no letters, no numbers, no logos, no watermark, no captions, no borders, no collage.`;
   const imagePath = path.join(outDir, 'viral_fact.png'), aiVideoPath = path.join(outDir, 'ai_motion.mp4'), audioPath = path.join(outDir, 'hindi_voice.mp3'), srtPath = path.join(outDir, 'captions.srt'), finalPath = path.join(outDir, 'viral_fact_reel.mp4');
   fs.writeFileSync(path.join(outDir, 'caption.txt'), fact + '\n\n#Psychology #MindFacts #DidYouKnow #Facts #Viral #Reels', 'utf8');
