@@ -136,7 +136,7 @@ function srtTime(seconds) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(milli).padStart(3, '0')}`;
 }
 
-function wrapHindi(text, maxChars = 30) {
+function wrapCaption(text, maxChars = 42) {
   const words = text.trim().split(/\s+/), lines = [];
   let line = '';
   for (const word of words) {
@@ -155,7 +155,7 @@ function createSrt(text, duration, outPath) {
   pieces.forEach((piece, index) => {
     const pieceDuration = duration * (Math.max(1, piece.length) / totalChars);
     const start = cursor, end = index === pieces.length - 1 ? duration : Math.min(duration, cursor + pieceDuration);
-    blocks.push(`${index + 1}\n${srtTime(start)} --> ${srtTime(end)}\n${wrapHindi(piece)}\n`);
+    blocks.push(`${index + 1}\n${srtTime(start)} --> ${srtTime(end)}\n${wrapCaption(piece)}\n`);
     cursor = end;
   });
   fs.writeFileSync(outPath, blocks.join('\n'), 'utf8');
@@ -172,7 +172,7 @@ function buildReel(imagePath, aiVideoPath, audioPath, srtPath, finalPath) {
   runFfmpeg(['-i', aiVideoPath, '-t', aiDuration.toFixed(2), '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,format=yuv420p', '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', aiVertical]);
   runFfmpeg(['-loop', '1', '-i', imagePath, '-t', stillDuration.toFixed(2), '-vf', "scale=1920:1920,crop=1080:1920,zoompan=z='min(zoom+0.0015,1.12)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,format=yuv420p", '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', stillVideo]);
   runFfmpeg(['-i', aiVertical, '-i', stillVideo, '-filter_complex', '[0:v][1:v]concat=n=2:v=1:a=0[v]', '-map', '[v]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', visualVideo]);
-  const subtitleFilter = `subtitles=${srtPath}:force_style='FontName=Noto Sans Devanagari,FontSize=38,PrimaryColour=&H00FFFFFF,OutlineColour=&H99000000,Outline=2,Shadow=0,Alignment=2,MarginV=135,WrapStyle=2,BorderStyle=1,Spacing=0'`;
+  const subtitleFilter = `subtitles=${srtPath}:force_style='FontName=DejaVu Sans,FontSize=26,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,Outline=2,Shadow=0,Alignment=2,MarginV=85,WrapStyle=2,BorderStyle=1,Spacing=0'`;
   runFfmpeg(['-i', visualVideo, '-i', audioPath, '-vf', subtitleFilter, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-movflags', '+faststart', finalPath]);
 }
 
@@ -180,9 +180,11 @@ function buildReel(imagePath, aiVideoPath, audioPath, srtPath, finalPath) {
   const outDir = path.join(process.cwd(), 'output');
   fs.mkdirSync(outDir, { recursive: true });
 
-  const combined = await askGemini(`Create ONE highly shareable psychology/human-behaviour fact for a Hindi Facebook Reel. It must be surprising but factually responsible. Return exactly two sections using these markers and nothing else:
+  const combined = await askGemini(`Create ONE highly shareable psychology/human-behaviour fact for a Hindi Facebook Reel. It must be surprising but factually responsible. Return exactly three sections using these markers and nothing else:
 FACT:
-50-70 words in natural spoken Hindi using Devanagari script. Start with a strong spoken hook. Do not invent statistics, medical claims or fake research. End with one natural question.
+50-70 words in natural spoken Hindi using Devanagari script. This is for the voiceover. Start with a strong spoken hook. Do not invent statistics, medical claims or fake research. End with one natural question.
+CAPTION:
+20-35 words in simple Roman-script Hinglish summarizing the same fact. Use easy words, no Devanagari, no emojis, no hashtags, no English-only sentence. Keep it short enough for small bottom captions.
 VISUAL:
 40-70 words in English. Describe one photorealistic cinematic scene that visually represents the fact, one clear action, subtle camera movement, realistic lighting, depth and mood. Keep the main subject centered for vertical 9:16 cropping. No text, letters, numbers, logos or captions in the scene.`);
 
@@ -190,19 +192,22 @@ VISUAL:
     .replace(/```(?:text|markdown)?/gi, '')
     .replace(/```/g, '')
     .trim();
-  let factMatch = normalized.match(/FACT:\s*([\s\S]*?)\s*VISUAL:/i);
+  let factMatch = normalized.match(/FACT:\s*([\s\S]*?)\s*CAPTION:/i);
+  let captionMatch = normalized.match(/CAPTION:\s*([\s\S]*?)\s*VISUAL:/i);
   let visualMatch = normalized.match(/VISUAL:\s*([\s\S]*)$/i);
   let fact = factMatch?.[1]?.trim();
+  let caption = captionMatch?.[1]?.trim();
   let visual = visualMatch?.[1]?.trim();
-  if (!fact || !visual) {
-    console.log('Gemini returned incomplete FACT/VISUAL format; using local fallback.');
+  if (!fact || !caption || !visual) {
+    console.log('Gemini returned incomplete FACT/CAPTION/VISUAL format; using local fallback and a safe Hinglish caption.');
     const fallback = localFallback();
     factMatch = fallback.match(/FACT:\s*([\s\S]*?)\s*VISUAL:/i);
     visualMatch = fallback.match(/VISUAL:\s*([\s\S]*)$/i);
     fact = factMatch?.[1]?.trim();
     visual = visualMatch?.[1]?.trim();
+    caption = 'Kabhi kabhi dimaag kisi baat ko turant yaad nahi karta, lekin background mein us information ko process karta rehta hai.';
   }
-  if (!fact || !visual) throw new Error(`Could not create fact/visual content: ${normalized.slice(0, 1000)}`);
+  if (!fact || !caption || !visual) throw new Error(`Could not create fact/caption/visual content: ${normalized.slice(0, 1000)}`);
 
   const imagePrompt = `Photorealistic cinematic social-media scene designed for a vertical 9:16 crop. Main subject centered and clearly visible. ${visual}. Natural realistic people and environment, believable dramatic lighting, shallow depth of field, premium documentary-film look, strong composition, no text, no letters, no numbers, no logos, no watermark, no captions, no borders, no collage.`;
   const imagePath = path.join(outDir, 'viral_fact.png'), aiVideoPath = path.join(outDir, 'ai_motion.mp4'), audioPath = path.join(outDir, 'hindi_voice.mp3'), srtPath = path.join(outDir, 'captions.srt'), finalPath = path.join(outDir, 'viral_fact_reel.mp4');
@@ -211,7 +216,7 @@ VISUAL:
   console.log('Generating Hindi voice...');
   generateHindiVoice(fact, audioPath);
   const audioDuration = probeDuration(audioPath);
-  createSrt(fact, audioDuration, srtPath);
+  createSrt(caption, audioDuration, srtPath);
   console.log('Generating image...');
   await generateImage(imagePrompt, imagePath);
   console.log('Generating 4-second motion with Wan 2.2 Fast ZeroGPU...');
