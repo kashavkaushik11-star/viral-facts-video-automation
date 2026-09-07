@@ -51,18 +51,13 @@ function localFallback() {
 
 async function askGemini(prompt) {
   const models = ['gemini-2.5-flash-lite', 'gemini-3-flash-preview'];
-  let lastError = '';
-
   for (const model of models) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
     for (let attempt = 1; attempt <= 2; attempt++) {
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 450 }
-        })
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 450 } })
       });
       if (r.ok) {
         const data = await r.json();
@@ -70,7 +65,6 @@ async function askGemini(prompt) {
         if (text) return text;
       } else {
         const errorText = await r.text();
-        lastError = `${model} ${r.status}: ${errorText}`;
         if (![429, 500, 502, 503, 504].includes(r.status)) break;
         let waitMs = Math.min(15000, attempt * 5000);
         const retryMatch = errorText.match(/retryDelay[^\d]*(\d+)s/i);
@@ -80,18 +74,13 @@ async function askGemini(prompt) {
       }
     }
   }
-
   console.log('Gemini quota unavailable; using local fact/visual fallback so the video pipeline can continue.');
   return localFallback();
 }
 
 async function generateImage(prompt, outPath) {
   const url = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-1-schnell`;
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt: prompt.slice(0, 2000) })
-  });
+  const r = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: prompt.slice(0, 2000) }) });
   if (!r.ok) throw new Error(`Cloudflare image error ${r.status}: ${await r.text()}`);
   const contentType = r.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
@@ -191,19 +180,29 @@ function buildReel(imagePath, aiVideoPath, audioPath, srtPath, finalPath) {
   const outDir = path.join(process.cwd(), 'output');
   fs.mkdirSync(outDir, { recursive: true });
 
-  // One Gemini request creates both the Hindi voice script and the visual prompt.
-  // If Gemini free-tier quota is unavailable, askGemini() supplies a local fallback.
   const combined = await askGemini(`Create ONE highly shareable psychology/human-behaviour fact for a Hindi Facebook Reel. It must be surprising but factually responsible. Return exactly two sections using these markers and nothing else:
 FACT:
 50-70 words in natural spoken Hindi using Devanagari script. Start with a strong spoken hook. Do not invent statistics, medical claims or fake research. End with one natural question.
 VISUAL:
 40-70 words in English. Describe one photorealistic cinematic scene that visually represents the fact, one clear action, subtle camera movement, realistic lighting, depth and mood. Keep the main subject centered for vertical 9:16 cropping. No text, letters, numbers, logos or captions in the scene.`);
 
-  const factMatch = combined.match(/FACT:\s*([\s\S]*?)\s*VISUAL:/i);
-  const visualMatch = combined.match(/VISUAL:\s*([\s\S]*)$/i);
-  const fact = factMatch?.[1]?.trim();
-  const visual = visualMatch?.[1]?.trim();
-  if (!fact || !visual) throw new Error(`Gemini returned an unexpected format: ${combined.slice(0, 1000)}`);
+  const normalized = String(combined || '')
+    .replace(/```(?:text|markdown)?/gi, '')
+    .replace(/```/g, '')
+    .trim();
+  let factMatch = normalized.match(/FACT:\s*([\s\S]*?)\s*VISUAL:/i);
+  let visualMatch = normalized.match(/VISUAL:\s*([\s\S]*)$/i);
+  let fact = factMatch?.[1]?.trim();
+  let visual = visualMatch?.[1]?.trim();
+  if (!fact || !visual) {
+    console.log('Gemini returned incomplete FACT/VISUAL format; using local fallback.');
+    const fallback = localFallback();
+    factMatch = fallback.match(/FACT:\s*([\s\S]*?)\s*VISUAL:/i);
+    visualMatch = fallback.match(/VISUAL:\s*([\s\S]*)$/i);
+    fact = factMatch?.[1]?.trim();
+    visual = visualMatch?.[1]?.trim();
+  }
+  if (!fact || !visual) throw new Error(`Could not create fact/visual content: ${normalized.slice(0, 1000)}`);
 
   const imagePrompt = `Photorealistic cinematic social-media scene designed for a vertical 9:16 crop. Main subject centered and clearly visible. ${visual}. Natural realistic people and environment, believable dramatic lighting, shallow depth of field, premium documentary-film look, strong composition, no text, no letters, no numbers, no logos, no watermark, no captions, no borders, no collage.`;
   const imagePath = path.join(outDir, 'viral_fact.png'), aiVideoPath = path.join(outDir, 'ai_motion.mp4'), audioPath = path.join(outDir, 'hindi_voice.mp3'), srtPath = path.join(outDir, 'captions.srt'), finalPath = path.join(outDir, 'viral_fact_reel.mp4');
