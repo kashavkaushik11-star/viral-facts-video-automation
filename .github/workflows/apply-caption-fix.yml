@@ -1,0 +1,74 @@
+name: Apply Caption Fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Apply smaller bottom Hinglish captions'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch caption generation and styling
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('viral_video.js')
+          s = p.read_text(encoding='utf-8')
+
+          old = """function wrapHindi(text, maxChars = 30) {\n  const words = text.trim().split(/\\s+/), lines = [];\n  let line = '';\n  for (const word of words) {\n    const candidate = line ? `${line} ${word}` : word;\n    if (candidate.length > maxChars && line) { lines.push(line); line = word; } else line = candidate;\n  }\n  if (line) lines.push(line);\n  return lines.slice(0, 2).join('\\n');\n}\n"""
+          new = """function wrapCaption(text, maxChars = 42) {\n  const words = text.trim().split(/\\s+/), lines = [];\n  let line = '';\n  for (const word of words) {\n    const candidate = line ? `${line} ${word}` : word;\n    if (candidate.length > maxChars && line) { lines.push(line); line = word; } else line = candidate;\n  }\n  if (line) lines.push(line);\n  return lines.slice(0, 2).join('\\n');\n}\n"""
+          if old not in s: raise SystemExit('wrap block not found')
+          s = s.replace(old, new)
+
+          old = """blocks.push(`${index + 1}\\n${srtTime(start)} --> ${srtTime(end)}\\n${wrapHindi(piece)}\\n`);"""
+          new = """blocks.push(`${index + 1}\\n${srtTime(start)} --> ${srtTime(end)}\\n${wrapCaption(piece)}\\n`);"""
+          if old not in s: raise SystemExit('SRT wrap call not found')
+          s = s.replace(old, new)
+
+          old = """const subtitleFilter = `subtitles=${srtPath}:force_style='FontName=Noto Sans Devanagari,FontSize=38,PrimaryColour=&H00FFFFFF,OutlineColour=&H99000000,Outline=2,Shadow=0,Alignment=2,MarginV=135,WrapStyle=2,BorderStyle=1,Spacing=0'`;"""
+          new = """const subtitleFilter = `subtitles=${srtPath}:force_style='FontName=DejaVu Sans,FontSize=26,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,Outline=2,Shadow=0,Alignment=2,MarginV=85,WrapStyle=2,BorderStyle=1,Spacing=0'`;"""
+          if old not in s: raise SystemExit('subtitle style not found')
+          s = s.replace(old, new)
+
+          old = """const combined = await askGemini(`Create ONE highly shareable psychology/human-behaviour fact for a Hindi Facebook Reel. It must be surprising but factually responsible. Return exactly two sections using these markers and nothing else:\nFACT:\n50-70 words in natural spoken Hindi using Devanagari script. Start with a strong spoken hook. Do not invent statistics, medical claims or fake research. End with one natural question.\nVISUAL:\n40-70 words in English. Describe one photorealistic cinematic scene that visually represents the fact, one clear action, subtle camera movement, realistic lighting, depth and mood. Keep the main subject centered for vertical 9:16 cropping. No text, letters, numbers, logos or captions in the scene.`);"""
+          new = """const combined = await askGemini(`Create ONE highly shareable psychology/human-behaviour fact for a Hindi Facebook Reel. It must be surprising but factually responsible. Return exactly three sections using these markers and nothing else:\nFACT:\n50-70 words in natural spoken Hindi using Devanagari script. This is for the voiceover. Start with a strong spoken hook. Do not invent statistics, medical claims or fake research. End with one natural question.\nCAPTION:\n20-35 words in simple Roman-script Hinglish summarizing the same fact. Use easy words, no Devanagari, no emojis, no hashtags, no English-only sentence. Keep it short enough for small bottom captions.\nVISUAL:\n40-70 words in English. Describe one photorealistic cinematic scene that visually represents the fact, one clear action, subtle camera movement, realistic lighting, depth and mood. Keep the main subject centered for vertical 9:16 cropping. No text, letters, numbers, logos or captions in the scene.`);"""
+          if old not in s: raise SystemExit('Gemini prompt not found')
+          s = s.replace(old, new)
+
+          old = """let factMatch = normalized.match(/FACT:\\s*([\\s\\S]*?)\\s*VISUAL:/i);\n  let visualMatch = normalized.match(/VISUAL:\\s*([\\s\\S]*)$/i);\n  let fact = factMatch?.[1]?.trim();\n  let visual = visualMatch?.[1]?.trim();"""
+          new = """let factMatch = normalized.match(/FACT:\\s*([\\s\\S]*?)\\s*CAPTION:/i);\n  let captionMatch = normalized.match(/CAPTION:\\s*([\\s\\S]*?)\\s*VISUAL:/i);\n  let visualMatch = normalized.match(/VISUAL:\\s*([\\s\\S]*)$/i);\n  let fact = factMatch?.[1]?.trim();\n  let caption = captionMatch?.[1]?.trim();\n  let visual = visualMatch?.[1]?.trim();"""
+          if old not in s: raise SystemExit('parser declarations not found')
+          s = s.replace(old, new)
+
+          old = """if (!fact || !visual) {\n    console.log('Gemini returned incomplete FACT/VISUAL format; using local fallback.');\n    const fallback = localFallback();\n    factMatch = fallback.match(/FACT:\\s*([\\s\\S]*?)\\s*VISUAL:/i);\n    visualMatch = fallback.match(/VISUAL:\\s*([\\s\\S]*)$/i);\n    fact = factMatch?.[1]?.trim();\n    visual = visualMatch?.[1]?.trim();\n  }\n  if (!fact || !visual) throw new Error(`Could not create fact/visual content: ${normalized.slice(0, 1000)}`);"""
+          new = """if (!fact || !caption || !visual) {\n    console.log('Gemini returned incomplete FACT/CAPTION/VISUAL format; using local fallback and a safe Hinglish caption.');\n    const fallback = localFallback();\n    factMatch = fallback.match(/FACT:\\s*([\\s\\S]*?)\\s*VISUAL:/i);\n    visualMatch = fallback.match(/VISUAL:\\s*([\\s\\S]*)$/i);\n    fact = factMatch?.[1]?.trim();\n    visual = visualMatch?.[1]?.trim();\n    caption = 'Kabhi kabhi dimaag kisi baat ko turant yaad nahi karta, lekin background mein us information ko process karta rehta hai.';\n  }\n  if (!fact || !caption || !visual) throw new Error(`Could not create fact/caption/visual content: ${normalized.slice(0, 1000)}`);"""
+          if old not in s: raise SystemExit('fallback block not found')
+          s = s.replace(old, new)
+
+          old = """fs.writeFileSync(path.join(outDir, 'caption.txt'), fact + '\\n\\n#Psychology #MindFacts #DidYouKnow #Facts #Viral #Reels', 'utf8');"""
+          new = """fs.writeFileSync(path.join(outDir, 'caption.txt'), fact + '\\n\\n#Psychology #MindFacts #DidYouKnow #Facts #Viral #Reels', 'utf8');"""
+          if old not in s: raise SystemExit('caption txt block not found')
+
+          old = """createSrt(fact, audioDuration, srtPath);"""
+          new = """createSrt(caption, audioDuration, srtPath);"""
+          if old not in s: raise SystemExit('createSrt call not found')
+          s = s.replace(old, new)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add viral_video.js
+          git diff --cached --quiet && exit 0
+          git commit -m "Apply smaller bottom Hinglish captions"
+          git push
