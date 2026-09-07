@@ -165,14 +165,16 @@ function runFfmpeg(args) { execFileSync('ffmpeg', ['-y', ...args], { stdio: 'inh
 
 function buildReel(imagePath, aiVideoPath, audioPath, srtPath, finalPath) {
   const audioDuration = probeDuration(audioPath);
+  const sourceAiDuration = Math.max(0.8, Math.min(4.0, probeDuration(aiVideoPath)));
   const aiDuration = Math.min(4.0, Math.max(0.8, audioDuration));
   const stillDuration = Math.max(0.8, audioDuration - aiDuration + 0.2);
   const aiVertical = '/tmp/ai_vertical.mp4', stillVideo = '/tmp/still_zoom.mp4', visualVideo = '/tmp/visual_reel.mp4';
   console.log(`Voice duration: ${audioDuration.toFixed(2)}s`);
-  runFfmpeg(['-i', aiVideoPath, '-t', aiDuration.toFixed(2), '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,format=yuv420p', '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', aiVertical]);
+  console.log(`Wan motion duration: ${sourceAiDuration.toFixed(2)}s; looping it to ${aiDuration.toFixed(2)}s for a continuous opening.`);
+  runFfmpeg(['-stream_loop', '-1', '-i', aiVideoPath, '-t', aiDuration.toFixed(2), '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,format=yuv420p', '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', aiVertical]);
   runFfmpeg(['-loop', '1', '-i', imagePath, '-t', stillDuration.toFixed(2), '-vf', "scale=1920:1920,crop=1080:1920,zoompan=z='min(zoom+0.0015,1.12)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,format=yuv420p", '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', stillVideo]);
   runFfmpeg(['-i', aiVertical, '-i', stillVideo, '-filter_complex', '[0:v][1:v]concat=n=2:v=1:a=0[v]', '-map', '[v]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', visualVideo]);
-  const subtitleFilter = `subtitles=${srtPath}:force_style='FontName=DejaVu Sans,FontSize=26,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,Outline=2,Shadow=0,Alignment=2,MarginV=85,WrapStyle=2,BorderStyle=1,Spacing=0'`;
+  const subtitleFilter = `subtitles=${srtPath}:force_style='FontName=DejaVu Sans,FontSize=12,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,Outline=1,Shadow=0,Alignment=2,MarginV=55,WrapStyle=2,BorderStyle=1,Spacing=0'`;
   runFfmpeg(['-i', visualVideo, '-i', audioPath, '-vf', subtitleFilter, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-movflags', '+faststart', finalPath]);
 }
 
