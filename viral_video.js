@@ -136,7 +136,7 @@ function srtTime(seconds) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(milli).padStart(3, '0')}`;
 }
 
-function wrapCaption(text, maxChars = 42) {
+function wrapCaption(text, maxChars = 30) {
   const words = text.trim().split(/\s+/), lines = [];
   let line = '';
   for (const word of words) {
@@ -148,18 +148,20 @@ function wrapCaption(text, maxChars = 42) {
 }
 
 function createSrt(text, duration, outPath) {
-  const pieces = (text.match(/[^।?!]+[।?!]?/g) || [text]).map(s => s.trim()).filter(Boolean);
+  const clean = text.replace(/\s+/g, ' ').trim();
+  const pieces = (clean.match(/[^.!?]+[.!?]?/g) || [clean]).map(s => s.trim()).filter(Boolean);
   const totalChars = pieces.reduce((sum, s) => sum + Math.max(1, s.length), 0);
   let cursor = 0;
   const blocks = [];
   let index = 0;
+
   pieces.forEach((piece) => {
     const pieceDuration = duration * (Math.max(1, piece.length) / totalChars);
     const start = cursor;
     const end = cursor + pieceDuration;
     const chars = Array.from(piece);
-    const typeTime = Math.min(pieceDuration * 0.72, Math.max(0.8, chars.length * 0.045));
-    const step = typeTime / Math.max(1, chars.length);
+    const step = pieceDuration / Math.max(1, chars.length);
+
     for (let i = 1; i <= chars.length; i++) {
       const cueStart = start + (i - 1) * step;
       const cueEnd = i === chars.length ? end : start + i * step;
@@ -169,6 +171,7 @@ function createSrt(text, duration, outPath) {
     }
     cursor = end;
   });
+
   fs.writeFileSync(outPath, blocks.join('\n'), 'utf8');
 }
 
@@ -181,7 +184,7 @@ function buildReel(imagePath, aiVideoPath, audioPath, srtPath, finalPath) {
   console.log(`Voice duration: ${audioDuration.toFixed(2)}s`);
   console.log(`Wan motion duration: ${sourceAiDuration.toFixed(2)}s; looping motion for the full ${audioDuration.toFixed(2)}s reel.`);
   runFfmpeg(['-stream_loop', '-1', '-i', aiVideoPath, '-t', audioDuration.toFixed(2), '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,format=yuv420p', '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', visualVideo]);
-  const subtitleFilter = `subtitles=${srtPath}:force_style='FontName=DejaVu Sans,FontSize=10,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,Outline=1,Shadow=0,Alignment=2,MarginV=55,WrapStyle=2,BorderStyle=1,Spacing=0'`;
+  const subtitleFilter = `subtitles=${srtPath}:original_size=1080x1920:force_style='FontName=DejaVu Sans,FontSize=9,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,Outline=1,Shadow=0,Alignment=2,MarginV=55,WrapStyle=2,BorderStyle=1,Spacing=0'`;
   runFfmpeg(['-i', visualVideo, '-i', audioPath, '-vf', subtitleFilter, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-movflags', '+faststart', finalPath]);
 }
 
@@ -189,13 +192,7 @@ function buildReel(imagePath, aiVideoPath, audioPath, srtPath, finalPath) {
   const outDir = path.join(process.cwd(), 'output');
   fs.mkdirSync(outDir, { recursive: true });
 
-  const combined = await askGemini(`Create ONE highly shareable psychology/human-behaviour fact for a Hindi Facebook Reel. It must be surprising but factually responsible. Return exactly three sections using these markers and nothing else:
-FACT:
-50-70 words in natural spoken Hindi using Devanagari script. This is for the voiceover. Start with a strong spoken hook. Do not invent statistics, medical claims or fake research. End with one natural question.
-CAPTION:
-20-35 words in simple Roman-script Hinglish summarizing the same fact. Use easy words, no Devanagari, no emojis, no hashtags, no English-only sentence. Keep it short enough for small bottom captions.
-VISUAL:
-40-70 words in English. Describe one photorealistic cinematic scene that visually represents the fact, one clear action, subtle camera movement, realistic lighting, depth and mood. Keep the main subject centered for vertical 9:16 cropping. No text, letters, numbers, logos or captions in the scene.`);
+  const combined = await askGemini(`Create ONE highly shareable psychology/human-behaviour fact for a Hindi Facebook Reel. It must be surprising but factually responsible. Return exactly three sections using these markers and nothing else:\nFACT:\n50-70 words in natural spoken Hindi using Devanagari script. This is for the voiceover. Start with a strong spoken hook. Do not invent statistics, medical claims or fake research. End with one natural question.\nCAPTION:\n20-35 words in simple Roman-script Hinglish summarizing the same fact. Use easy words, no Devanagari, no emojis, no hashtags, no English-only sentence. Keep it short enough for small bottom captions.\nVISUAL:\n40-70 words in English. Describe one photorealistic cinematic scene that visually represents the fact, one clear action, subtle camera movement, realistic lighting, depth and mood. Keep the main subject centered for vertical 9:16 cropping. No text, letters, numbers, logos or captions in the scene.`);
 
   const normalized = String(combined || '')
     .replace(/```(?:text|markdown)?/gi, '')
