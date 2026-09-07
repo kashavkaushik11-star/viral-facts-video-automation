@@ -10,6 +10,45 @@ if (!GEMINI_API_KEY || !CLOUDFLARE_API_TOKEN || !CLOUDFLARE_ACCOUNT_ID) {
   throw new Error('Missing required secrets: GEMINI_API_KEY, CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID');
 }
 
+function localFallback() {
+  const facts = [
+    {
+      fact: 'क्या आपने कभी नोटिस किया है कि कोई नाम या शब्द याद नहीं आता, लेकिन कुछ देर बाद अचानक खुद याद आ जाता है? ऐसा इसलिए हो सकता है क्योंकि दिमाग उस जानकारी को पूरी तरह छोड़ता नहीं है। वह पीछे से उसे खोजता रहता है, और जब सही connection मिल जाता है तो जवाब अचानक सामने आ जाता है। आपके साथ ऐसा कितनी बार होता है?',
+      visual: 'A photorealistic cinematic close-up of a thoughtful person sitting quietly at a desk, briefly looking away while trying to remember something, then suddenly showing a subtle moment of realization. Slow gentle camera push-in, warm realistic window light, shallow depth of field, centered subject, natural room environment.'
+    },
+    {
+      fact: 'जब आप किसी कमरे में जाते हैं और अचानक भूल जाते हैं कि वहाँ क्यों आए थे, तो यह सिर्फ लापरवाही नहीं होती। जगह बदलने से आपका दिमाग context भी बदल देता है, जिससे पिछला विचार थोड़ी देर के लिए कम accessible हो सकता है। दरवाज़े से वापस उसी जगह जाने पर बात फिर याद आ जाना इसी तरह के effect से जुड़ा हो सकता है।',
+      visual: 'A photorealistic cinematic scene of a person entering a room, stopping with a puzzled expression, then looking back toward the doorway as the memory returns. Subtle handheld camera movement, realistic indoor lighting, shallow depth of field, centered subject, natural home environment.'
+    },
+    {
+      fact: 'कभी आपने देखा है कि किसी को जम्हाई लेते देखकर आपको भी जम्हाई आने लगती है? यह देखकर नकल करने जैसा लग सकता है, लेकिन इसके पीछे कई factors हो सकते हैं। लोगों में एक-दूसरे के व्यवहार और expressions अपने-आप notice और mirror करने की प्रवृत्ति होती है। इसलिए सामने वाले की छोटी-सी action भी आपके behavior को प्रभावित कर सकती है।',
+      visual: 'A photorealistic cinematic scene of two people sitting together in a quiet cafe, one person yawning naturally while the other notices and begins to yawn. Gentle camera drift, realistic soft lighting, shallow depth of field, centered subjects, authentic expressions, documentary-film atmosphere.'
+    },
+    {
+      fact: 'जब कोई गाना आपके दिमाग में बार-बार बजता रहता है, तो उसे रोकने की कोशिश कभी-कभी उल्टा उसे और noticeable बना देती है। दिमाग किसी विचार को दबाने की कोशिश करते हुए उसी विचार पर ध्यान बनाए रख सकता है। इसलिए कभी-कभी उस धुन को एक बार पूरा सुन लेना या ध्यान किसी दूसरे काम पर लगाना ज्यादा आसान महसूस होता है।',
+      visual: 'A photorealistic cinematic scene of a person working at a desk while a familiar song seems stuck in their mind, then calmly shifting attention to another task. Slow camera push, realistic afternoon light, shallow depth of field, centered subject, subtle expressive behavior.'
+    },
+    {
+      fact: 'जब आप किसी चीज़ को बहुत ध्यान से खोज रहे होते हैं, तो कई बार वही चीज़ सामने होते हुए भी दिखाई नहीं देती। इसका एक कारण attention है: दिमाग हर visual detail को बराबर महत्व नहीं देता। वह आपके लक्ष्य से जुड़ी जानकारी को प्राथमिकता देता है। इसलिए खोजते समय कभी-कभी वस्तु सामने होने के बावजूद आपकी नजर उसे ignore कर देती है।',
+      visual: 'A photorealistic cinematic scene of a person searching a cluttered desk for a small object, overlooking it, then suddenly noticing it directly in front of them. Slow camera movement, realistic daylight, shallow depth of field, centered subject and object, natural environment.'
+    },
+    {
+      fact: 'जब आप किसी कहानी को बार-बार सुनाते हैं, तो आपको लग सकता है कि आपकी memory बिल्कुल वैसी ही बनी हुई है। लेकिन यादें recording की तरह fixed नहीं होतीं। उन्हें याद करते समय दिमाग उन्हें दोबारा reconstruct करता है, इसलिए समय के साथ छोटी details बदल सकती हैं। इसी वजह से दो लोग एक ही घटना को थोड़ा अलग तरीके से याद कर सकते हैं।',
+      visual: 'A photorealistic cinematic scene of a person telling a familiar story to a friend, pausing thoughtfully as they reconstruct a memory. Slow subtle camera push-in, warm realistic lighting, shallow depth of field, centered faces, intimate documentary-film mood.'
+    },
+    {
+      fact: 'जब आप किसी काम को बीच में छोड़कर दूसरे काम पर चले जाते हैं, तो पहला काम दिमाग में अधूरा बना रह सकता है। यही वजह है कि कभी-कभी कोई अधूरा task अचानक याद आ जाता है, जबकि पूरा किया हुआ काम आसानी से दिमाग से निकल जाता है। हमारा ध्यान सिर्फ finished चीज़ों पर नहीं, बल्कि pending कामों पर भी टिक सकता है।',
+      visual: 'A photorealistic cinematic scene of a person leaving an unfinished notebook task on a desk, then suddenly remembering it while doing another activity. Smooth camera transition, realistic evening light, shallow depth of field, centered subject, believable home environment.'
+    },
+    {
+      fact: 'किसी व्यक्ति की पहली छाप बनाते समय हमारा दिमाग बहुत कम जानकारी से भी जल्दी एक overall impression बना लेता है। कपड़े, चेहरे के भाव, बोलने का तरीका और body language जैसी चीज़ें उस impression को प्रभावित कर सकती हैं। लेकिन पहली छाप हमेशा पूरी कहानी नहीं बताती। इसलिए किसी व्यक्ति को समझने के लिए सिर्फ शुरुआती कुछ seconds पर निर्भर करना सही नहीं होता।',
+      visual: 'A photorealistic cinematic scene of two strangers meeting for the first time, briefly observing each other before beginning a friendly conversation. Slow natural camera movement, realistic street-side lighting, shallow depth of field, centered subjects, authentic body language and expressions.'
+    }
+  ];
+  const item = facts[Math.floor(Date.now() / 86400000) % facts.length];
+  return `FACT:\n${item.fact}\nVISUAL:\n${item.visual}`;
+}
+
 async function askGemini(prompt) {
   const models = ['gemini-2.5-flash-lite', 'gemini-3-flash-preview'];
   let lastError = '';
@@ -22,7 +61,7 @@ async function askGemini(prompt) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 300 }
+          generationConfig: { temperature: 0.7, maxOutputTokens: 450 }
         })
       });
       if (r.ok) {
@@ -41,7 +80,9 @@ async function askGemini(prompt) {
       }
     }
   }
-  throw new Error(`Gemini unavailable after model fallback: ${lastError}`);
+
+  console.log('Gemini quota unavailable; using local fact/visual fallback so the video pipeline can continue.');
+  return localFallback();
 }
 
 async function generateImage(prompt, outPath) {
@@ -146,33 +187,23 @@ function buildReel(imagePath, aiVideoPath, audioPath, srtPath, finalPath) {
   runFfmpeg(['-i', visualVideo, '-i', audioPath, '-vf', subtitleFilter, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-movflags', '+faststart', finalPath]);
 }
 
-function fallbackVisualPrompt(fact) {
-  return `A photorealistic cinematic scene that clearly illustrates this psychology idea: ${fact}. Show one ordinary person in a realistic everyday environment performing one clear action that visually communicates the idea. Subtle natural camera movement, realistic lighting, shallow depth of field, believable human emotion, documentary-film mood, main subject centered for vertical 9:16 cropping, no text, letters, numbers, logos or captions.`;
-}
-
 (async () => {
   const outDir = path.join(process.cwd(), 'output');
   fs.mkdirSync(outDir, { recursive: true });
 
-  // One Gemini request creates both the Hindi voice script and visual prompt.
-  // The parser is intentionally tolerant: if Gemini returns only FACT, a local visual prompt is generated.
-  const combined = await askGemini(`Create ONE highly shareable psychology/human-behaviour fact for a Hindi Facebook Reel. It must be surprising but factually responsible. Return exactly two sections:
-FACT: 45-60 words in natural spoken Hindi using Devanagari script. Start with a strong spoken hook. Do not invent statistics, medical claims or fake research. End with one natural question.
-VISUAL: 25-40 words in English. Describe one photorealistic cinematic scene that visually represents the fact, one clear action, realistic lighting, depth and mood. Keep the main subject centered for vertical 9:16 cropping. No text, letters, numbers, logos or captions.`);
+  // One Gemini request creates both the Hindi voice script and the visual prompt.
+  // If Gemini free-tier quota is unavailable, askGemini() supplies a local fallback.
+  const combined = await askGemini(`Create ONE highly shareable psychology/human-behaviour fact for a Hindi Facebook Reel. It must be surprising but factually responsible. Return exactly two sections using these markers and nothing else:
+FACT:
+50-70 words in natural spoken Hindi using Devanagari script. Start with a strong spoken hook. Do not invent statistics, medical claims or fake research. End with one natural question.
+VISUAL:
+40-70 words in English. Describe one photorealistic cinematic scene that visually represents the fact, one clear action, subtle camera movement, realistic lighting, depth and mood. Keep the main subject centered for vertical 9:16 cropping. No text, letters, numbers, logos or captions in the scene.`);
 
-  const factMatch = combined.match(/(?:^|\n)\s*FACT\s*:\s*([\s\S]*?)(?=\n\s*(?:VISUAL|VISUAL PROMPT)\s*:|$)/i);
-  const visualMatch = combined.match(/(?:^|\n)\s*(?:VISUAL|VISUAL PROMPT)\s*:\s*([\s\S]*)$/i);
+  const factMatch = combined.match(/FACT:\s*([\s\S]*?)\s*VISUAL:/i);
+  const visualMatch = combined.match(/VISUAL:\s*([\s\S]*)$/i);
   const fact = factMatch?.[1]?.trim();
-  let visual = visualMatch?.[1]?.trim();
-
-  if (!fact) {
-    throw new Error(`Gemini did not return a FACT section: ${combined.slice(0, 1000)}`);
-  }
-
-  if (!visual) {
-    console.log('Gemini visual section missing; using local visual prompt fallback.');
-    visual = fallbackVisualPrompt(fact);
-  }
+  const visual = visualMatch?.[1]?.trim();
+  if (!fact || !visual) throw new Error(`Gemini returned an unexpected format: ${combined.slice(0, 1000)}`);
 
   const imagePrompt = `Photorealistic cinematic social-media scene designed for a vertical 9:16 crop. Main subject centered and clearly visible. ${visual}. Natural realistic people and environment, believable dramatic lighting, shallow depth of field, premium documentary-film look, strong composition, no text, no letters, no numbers, no logos, no watermark, no captions, no borders, no collage.`;
   const imagePath = path.join(outDir, 'viral_fact.png'), aiVideoPath = path.join(outDir, 'ai_motion.mp4'), audioPath = path.join(outDir, 'hindi_voice.mp3'), srtPath = path.join(outDir, 'captions.srt'), finalPath = path.join(outDir, 'viral_fact_reel.mp4');
