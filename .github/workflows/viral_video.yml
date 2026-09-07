@@ -2,8 +2,6 @@ name: Viral Facts Video
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 jobs:
   generate:
