@@ -2,6 +2,8 @@ name: Viral Facts Video
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '30 3 * * *'
 
 jobs:
   generate:
@@ -28,12 +30,12 @@ jobs:
       - name: Apply caption voice-sync fix
         run: python sync_caption_patch.py
 
-      - name: Generate viral video
+      - name: Generate viral video from Google Trends
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node viral_video.js
+        run: node run_trends.js
 
       - name: Upload test video
         uses: actions/upload-artifact@v4
