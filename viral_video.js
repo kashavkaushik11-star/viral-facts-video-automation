@@ -6,6 +6,9 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
 
+const SCENE_DURATION = 10;
+const TOTAL_VIDEO_DURATION = 30;
+
 if (!GEMINI_API_KEY || !CLOUDFLARE_API_TOKEN || !CLOUDFLARE_ACCOUNT_ID) {
   throw new Error('Missing required secrets: GEMINI_API_KEY, CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID');
 }
@@ -177,15 +180,47 @@ function createSrt(text, duration, outPath) {
 
 function runFfmpeg(args) { execFileSync('ffmpeg', ['-y', ...args], { stdio: 'inherit' }); }
 
-function buildReel(imagePath, aiVideoPath, audioPath, srtPath, finalPath) {
+function buildScenePrompts(baseVisual) {
+  const shared = `Keep the same main subject, wardrobe, location and overall visual identity across all three scenes. ${baseVisual}`;
+  return [
+    `${shared} Scene 1 of 3: establish the situation and begin the main action. Slow cinematic push-in, natural subtle movement.`,
+    `${shared} Scene 2 of 3: continue the same moment from a slightly different camera angle with a clear change in body language or action. Gentle lateral camera drift, visually distinct composition.`,
+    `${shared} Scene 3 of 3: show the natural payoff or reaction to the action, using a closer composition and a subtle final camera move. Keep it believable and cinematic.`
+  ];
+}
+
+function buildTenSecondClip(aiVideoPath, outPath) {
+  runFfmpeg([
+    '-stream_loop', '-1', '-i', aiVideoPath,
+    '-t', String(SCENE_DURATION),
+    '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,format=yuv420p',
+    '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', outPath
+  ]);
+}
+
+function concatScenes(scenePaths, outPath) {
+  const concatPath = '/tmp/scenes_concat.txt';
+  fs.writeFileSync(concatPath, scenePaths.map(p => `file '${p.replace(/'/g, "'\\''")}'`).join('\n') + '\n', 'utf8');
+  runFfmpeg(['-f', 'concat', '-safe', '0', '-i', concatPath, '-c', 'copy', '-movflags', '+faststart', outPath]);
+}
+
+function buildReel(scenePaths, audioPath, srtPath, finalPath) {
+  const visualVideo = '/tmp/visual_reel_30s.mp4';
   const audioDuration = probeDuration(audioPath);
-  const sourceAiDuration = probeDuration(aiVideoPath);
-  const visualVideo = '/tmp/visual_reel.mp4';
-  console.log(`Voice duration: ${audioDuration.toFixed(2)}s`);
-  console.log(`Wan motion duration: ${sourceAiDuration.toFixed(2)}s; looping motion for the full ${audioDuration.toFixed(2)}s reel.`);
-  runFfmpeg(['-stream_loop', '-1', '-i', aiVideoPath, '-t', audioDuration.toFixed(2), '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,format=yuv420p', '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', visualVideo]);
+  console.log(`Voice duration: ${audioDuration.toFixed(2)}s; visual duration: exactly ${TOTAL_VIDEO_DURATION}s.`);
+  concatScenes(scenePaths, visualVideo);
+
   const subtitleFilter = `subtitles=${srtPath}:original_size=1080x1920:force_style='FontName=DejaVu Sans,FontSize=9,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,Outline=1,Shadow=0,Alignment=2,MarginV=55,WrapStyle=2,BorderStyle=1,Spacing=0'`;
-  runFfmpeg(['-i', visualVideo, '-i', audioPath, '-vf', subtitleFilter, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-movflags', '+faststart', finalPath]);
+  runFfmpeg([
+    '-i', visualVideo,
+    '-i', audioPath,
+    '-filter_complex', `[1:a]apad=pad_dur=${TOTAL_VIDEO_DURATION}[a]`,
+    '-vf', subtitleFilter,
+    '-map', '0:v:0', '-map', '[a]',
+    '-t', String(TOTAL_VIDEO_DURATION),
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+    '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', finalPath
+  ]);
 }
 
 (async () => {
@@ -215,19 +250,35 @@ function buildReel(imagePath, aiVideoPath, audioPath, srtPath, finalPath) {
   }
   if (!fact || !caption || !visual) throw new Error(`Could not create fact/caption/visual content: ${normalized.slice(0, 1000)}`);
 
-  const imagePrompt = `Photorealistic cinematic social-media scene designed for a vertical 9:16 crop. Main subject centered and clearly visible. ${visual}. Natural realistic people and environment, believable dramatic lighting, shallow depth of field, premium documentary-film look, strong composition, no text, no letters, no numbers, no logos, no watermark, no captions, no borders, no collage.`;
-  const imagePath = path.join(outDir, 'viral_fact.png'), aiVideoPath = path.join(outDir, 'ai_motion.mp4'), audioPath = path.join(outDir, 'hindi_voice.mp3'), srtPath = path.join(outDir, 'captions.srt'), finalPath = path.join(outDir, 'viral_fact_reel.mp4');
+  const scenePrompts = buildScenePrompts(visual);
+  const imagePaths = [1, 2, 3].map(i => path.join(outDir, `viral_fact_scene_${i}.png`));
+  const motionPaths = [1, 2, 3].map(i => path.join(outDir, `ai_motion_scene_${i}.mp4`));
+  const sceneVideoPaths = [1, 2, 3].map(i => `/tmp/viral_scene_${i}_10s.mp4`);
+  const audioPath = path.join(outDir, 'hindi_voice.mp3');
+  const srtPath = path.join(outDir, 'captions.srt');
+  const finalPath = path.join(outDir, 'viral_fact_reel.mp4');
+
   fs.writeFileSync(path.join(outDir, 'caption.txt'), fact + '\n\n#Psychology #MindFacts #DidYouKnow #Facts #Viral #Reels', 'utf8');
-  fs.writeFileSync(path.join(outDir, 'visual_prompt.txt'), visual, 'utf8');
+  fs.writeFileSync(path.join(outDir, 'visual_prompt.txt'), scenePrompts.join('\n\n--- SCENE 2 ---\n\n'), 'utf8');
+
   console.log('Generating Hindi voice...');
   generateHindiVoice(fact, audioPath);
   const audioDuration = probeDuration(audioPath);
-  createSrt(caption, audioDuration, srtPath);
-  console.log('Generating image...');
-  await generateImage(imagePrompt, imagePath);
-  console.log('Generating 4-second motion with Wan 2.2 Fast ZeroGPU...');
-  pythonVideo(imagePath, visual, aiVideoPath);
-  console.log('Assembling vertical reel with Hindi voice + captions...');
-  buildReel(imagePath, aiVideoPath, audioPath, srtPath, finalPath);
+  createSrt(caption, Math.min(audioDuration, TOTAL_VIDEO_DURATION), srtPath);
+
+  for (let i = 0; i < 3; i++) {
+    console.log(`Generating image ${i + 1}/3...`);
+    const imagePrompt = `Photorealistic cinematic social-media scene designed for a vertical 9:16 crop. Main subject centered and clearly visible. ${scenePrompts[i]} Natural realistic people and environment, believable dramatic lighting, shallow depth of field, premium documentary-film look, strong composition, no text, no letters, no numbers, no logos, no watermark, no captions, no borders, no collage.`;
+    await generateImage(imagePrompt, imagePaths[i]);
+
+    console.log(`Generating 4-second motion ${i + 1}/3 with Wan 2.2 Fast ZeroGPU...`);
+    pythonVideo(imagePaths[i], scenePrompts[i], motionPaths[i]);
+
+    console.log(`Making scene ${i + 1} exactly ${SCENE_DURATION} seconds...`);
+    buildTenSecondClip(motionPaths[i], sceneVideoPaths[i]);
+  }
+
+  console.log('Joining 3 x 10-second scenes into exactly 30 seconds...');
+  buildReel(sceneVideoPaths, audioPath, srtPath, finalPath);
   console.log('DONE:', finalPath);
 })();
