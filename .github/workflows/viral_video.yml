@@ -55,6 +55,22 @@ jobs:
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
         run: node facebook_post.js
 
+      # YouTube Shorts uses the same generated MP4 as Facebook. If the three
+      # YouTube OAuth secrets are not configured yet, this step skips safely.
+      - name: Auto-post same video to YouTube Shorts
+        if: success() && github.event_name == 'schedule'
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          YOUTUBE_PRIVACY_STATUS: public
+        run: |
+          if [ -z "$YOUTUBE_CLIENT_ID" ] || [ -z "$YOUTUBE_CLIENT_SECRET" ] || [ -z "$YOUTUBE_REFRESH_TOKEN" ]; then
+            echo "YouTube OAuth secrets are not configured yet; skipping YouTube upload."
+            exit 0
+          fi
+          node youtube_upload.js
+
       - name: Send ntfy notification
         if: success() && github.event_name == 'schedule'
         env:
