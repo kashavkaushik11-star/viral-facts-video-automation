@@ -1,4 +1,4 @@
-name: Viral Facts Video
+name: Google Trends Explainer
 
 on:
   workflow_dispatch:
@@ -30,7 +30,7 @@ jobs:
       - name: Apply scene motion fix
         run: python scene_motion_patch.py
 
-      - name: Generate viral video from Google Trends
+      - name: Generate Google Trends explainer video
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -40,11 +40,12 @@ jobs:
       - name: Upload test video
         uses: actions/upload-artifact@v4
         with:
-          name: viral-facts-test-video
+          name: google-trends-explainer
           path: output/
           retention-days: 3
 
-      - name: Auto-post video to Facebook Page
+      # Manual runs are for review only. Scheduled runs publish automatically.
+      - name: Auto-post explainer to Facebook Page
         if: success() && github.event_name == 'schedule'
         env:
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
