@@ -3,7 +3,7 @@ const path = require('path');
 const { getGoogleTrends } = require('./trend_selector');
 
 function trendFallback(topic) {
-  return `FACT:\nKya aapne notice kiya hai ki jab koi topic, jaise ${topic}, achanak har jagah dikhne lagta hai, to humein lagta hai ki woh aur bhi zyada jagah nazar aa raha hai? Dimaag jis cheez par dhyan dena shuru karta hai, usi se judi cheezein humein zyada easily notice hoti hain. Isi wajah se koi trend ek baar notice hone ke baad aur bhi popular lag sakta hai. Aapne aisa kabhi feel kiya hai?\nCAPTION:\n${topic} trend notice karne ke baad dimaag usi se judi cheezein aur jaldi notice kar sakta hai.\nVISUAL:\nA photorealistic cinematic scene of a person scrolling on a smartphone and repeatedly noticing the same trending topic represented only by a generic phone screen glow with no readable text. The person looks increasingly curious as similar topic cues appear around them in everyday life. Slow camera push-in, realistic indoor lighting, shallow depth of field, centered subject, documentary-film mood, no readable text, logos or captions.`;
+  return `FACT:\nक्या आपने कभी नोटिस किया है कि जब ${topic} जैसी कोई चीज़ अचानक हर जगह दिखाई देने लगे, तो कुछ समय बाद वह हमें और भी ज्यादा नजर आने लगती है? ऐसा इसलिए हो सकता है क्योंकि हमारा दिमाग उस चीज़ पर ध्यान देना शुरू कर देता है और उससे जुड़ी जानकारी को जल्दी पहचानने लगता है। इसी वजह से कोई ट्रेंड एक बार ध्यान में आने के बाद और ज्यादा prominent लग सकता है। आपके साथ ऐसा कभी हुआ है?\nCAPTION:\n${topic} trend notice hone ke baad dimaag usi se judi cheezein aur jaldi notice kar sakta hai.\nVISUAL:\nA photorealistic cinematic scene of one young Indian adult scrolling on a smartphone, then becoming curious as the same general topic keeps appearing in everyday surroundings without any readable text. Natural realistic indoor lighting, shallow depth of field, centered subject, subtle camera movement, premium documentary-film look, no text, no letters, no numbers, no logos, no watermark.`;
 }
 
 function makeResponse(text, status = 200) {
@@ -31,7 +31,7 @@ async function main() {
   }
 
   const trendContext = selectedTrend
-    ? `\n\nMANDATORY GOOGLE TRENDS MODE (INDIA): The selected trend is exactly: "${selectedTrend}". You MUST create the video around this exact trend. The FACT or CAPTION must explicitly contain the exact trend title "${selectedTrend}". Connect it to a real psychology/human-behaviour effect without inventing claims about the trend itself. Do not ignore the trend and do not substitute an evergreen topic. Return exactly FACT/CAPTION/VISUAL as requested.`
+    ? `\n\nMANDATORY GOOGLE TRENDS MODE (INDIA): Use this selected trend as the topic: "${selectedTrend}". Mention the exact trend title naturally in the FACT or CAPTION, but write the complete voiceover in natural Hindi Devanagari. Never copy the trend's original script if it is not Devanagari/English. Connect it to a real psychology/human-behaviour effect without inventing claims. Return exactly FACT/CAPTION/VISUAL.`
     : '';
 
   const originalFetch = global.fetch;
