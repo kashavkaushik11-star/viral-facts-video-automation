@@ -47,18 +47,16 @@ jobs:
           path: output/
           retention-days: 3
 
-      # Manual runs are for review only. Scheduled runs publish automatically.
+      # Scheduled and manual runs both publish, allowing a complete live test.
       - name: Auto-post explainer to Facebook Page
-        if: success() && github.event_name == 'schedule'
+        if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
         run: node facebook_post.js
 
-      # YouTube Shorts uses the same generated MP4 as Facebook. If the three
-      # YouTube OAuth secrets are not configured yet, this step skips safely.
       - name: Auto-post same video to YouTube Shorts
-        if: success() && github.event_name == 'schedule'
+        if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -72,7 +70,7 @@ jobs:
           node youtube_upload.js
 
       - name: Send ntfy notification
-        if: success() && github.event_name == 'schedule'
+        if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: node ntfy_notify.js
