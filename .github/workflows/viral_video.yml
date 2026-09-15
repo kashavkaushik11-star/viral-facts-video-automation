@@ -45,7 +45,7 @@ jobs:
           retention-days: 3
 
       - name: Auto-post video to Facebook Page
-        if: success()
+        if: success() && github.event_name == 'schedule'
         env:
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
