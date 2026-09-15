@@ -11,6 +11,8 @@ on:
 jobs:
   generate:
     runs-on: ubuntu-latest
+    # Give the workflow plenty of time for slow APIs/rendering/retries.
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +40,20 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node run_trends.js
+        run: |
+          set -u
+          for attempt in 1 2 3 4 5; do
+            echo "Video generation attempt $attempt/5"
+            if node run_trends.js; then
+              echo "Video generation succeeded."
+              exit 0
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              sleep $((attempt * 30))
+            fi
+          done
+          echo "Video generation failed after 5 attempts."
+          exit 1
 
       - name: Upload test video
         uses: actions/upload-artifact@v4
@@ -48,12 +63,26 @@ jobs:
           retention-days: 3
 
       # Scheduled and manual runs both publish, allowing a complete live test.
+      # Each posting step retries temporary network/API failures before failing the run.
       - name: Auto-post explainer to Facebook Page
         if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
-        run: node facebook_post.js
+        run: |
+          set -u
+          for attempt in 1 2 3 4 5; do
+            echo "Facebook posting attempt $attempt/5"
+            if node facebook_post.js; then
+              echo "Facebook post succeeded."
+              exit 0
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              sleep $((attempt * 30))
+            fi
+          done
+          echo "Facebook posting failed after 5 attempts."
+          exit 1
 
       - name: Auto-post same video to YouTube Shorts
         if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
@@ -63,8 +92,20 @@ jobs:
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           YOUTUBE_PRIVACY_STATUS: public
         run: |
+          set -u
           if [ -z "$YOUTUBE_CLIENT_ID" ] || [ -z "$YOUTUBE_CLIENT_SECRET" ] || [ -z "$YOUTUBE_REFRESH_TOKEN" ]; then
             echo "YouTube OAuth secrets are not configured yet; skipping YouTube upload."
             exit 0
           fi
-          node youtube_upload.js
+          for attempt in 1 2 3 4 5; do
+            echo "YouTube posting attempt $attempt/5"
+            if node youtube_upload.js; then
+              echo "YouTube post succeeded."
+              exit 0
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              sleep $((attempt * 30))
+            fi
+          done
+          echo "YouTube posting failed after 5 attempts."
+          exit 1
