@@ -3,7 +3,10 @@ name: Google Trends Explainer
 on:
   workflow_dispatch:
   schedule:
-    - cron: '30 3 * * *'
+    # India audience: 08:30, 13:30 and 20:30 IST (03:00, 08:00 and 15:00 UTC)
+    - cron: '0 3 * * *'
+    - cron: '0 8 * * *'
+    - cron: '0 15 * * *'
 
 jobs:
   generate:
