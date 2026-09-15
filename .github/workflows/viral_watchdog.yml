@@ -1,0 +1,86 @@
+name: Viral Facts Watchdog
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Check twice per hour so a missed/dropped scheduled run gets recovered.
+    - cron: '5,35 * * * *'
+
+permissions:
+  actions: write
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check and recover missed publishing runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import subprocess
+          from datetime import datetime, timezone, timedelta
+
+          repo = __import__('os').environ['GH_REPO']
+          raw = subprocess.check_output([
+              'gh', 'run', 'list',
+              '--repo', repo,
+              '--workflow', 'viral_video.yml',
+              '--limit', '30',
+              '--json', 'databaseId,status,conclusion,createdAt,event,url'
+          ], text=True)
+          runs = json.loads(raw)
+
+          now = datetime.now(timezone.utc)
+          today = now.date()
+          slots = [
+              datetime(today.year, today.month, today.day, 3, 0, tzinfo=timezone.utc),
+              datetime(today.year, today.month, today.day, 8, 0, tzinfo=timezone.utc),
+              datetime(today.year, today.month, today.day, 15, 0, tzinfo=timezone.utc),
+          ]
+
+          # Only recover a slot after 45 minutes. This gives GitHub time to
+          # start a delayed schedule event before the watchdog intervenes.
+          due_slots = [s for s in slots if now >= s + timedelta(minutes=45)]
+
+          for slot in due_slots:
+              # A run created reasonably close to this slot is considered its
+              # run. Manual recovery runs are also accepted as successful cover.
+              candidates = []
+              for r in runs:
+                  created = datetime.fromisoformat(r['createdAt'].replace('Z', '+00:00'))
+                  delta = (created - slot).total_seconds()
+                  if -30 * 60 <= delta <= 4 * 3600:
+                      candidates.append((abs(delta), created, r))
+
+              candidates.sort(key=lambda x: x[0])
+              covered = False
+              active = False
+              failed = None
+
+              for _, _, r in candidates:
+                  if r['status'] in ('queued', 'in_progress', 'requested', 'waiting', 'pending'):
+                      active = True
+                      break
+                  if r['status'] == 'completed' and r['conclusion'] == 'success':
+                      covered = True
+                      break
+                  if r['status'] == 'completed' and r['conclusion'] in ('failure', 'timed_out', 'cancelled', 'startup_failure') and failed is None:
+                      failed = r
+
+              label = slot.strftime('%Y-%m-%d %H:%M UTC')
+              if covered:
+                  print(f'OK: slot {label} is covered.')
+              elif active:
+                  print(f'WAIT: slot {label} already has an active run.')
+              elif failed:
+                  run_id = str(failed['databaseId'])
+                  print(f'RETRY: slot {label} failed in run {run_id}; re-running failed jobs.')
+                  subprocess.check_call(['gh', 'run', 'rerun', run_id, '--failed', '--repo', repo])
+              else:
+                  print(f'RECOVER: slot {label} has no run; dispatching the publisher now.')
+                  subprocess.check_call(['gh', 'workflow', 'run', 'viral_video.yml', '--ref', 'main', '--repo', repo])
+          PY
