@@ -5,6 +5,15 @@ function decodeXml(value) {
   return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
 }
 
+function isUsableForHindiReel(title) {
+  // Keep English/ASCII and Devanagari titles. Reject Tamil/Telugu/Bengali/etc.
+  // so the Hindi voice/subtitles never get polluted by another Indic script.
+  if (!title || !/[A-Za-z\u0900-\u097F]/.test(title)) return false;
+  if (/[\u0980-\u0DFF]/.test(title.replace(/[\u0900-\u097F]/g, ''))) return false;
+  if (title.length < 2 || title.length > 80) return false;
+  return true;
+}
+
 async function getGoogleTrends() {
   const response = await fetch(TRENDS_URL, { headers: { 'User-Agent': 'viral-facts-video-automation/1.0' } });
   if (!response.ok) throw new Error(`Google Trends RSS ${response.status}`);
@@ -18,9 +27,17 @@ async function getGoogleTrends() {
   }).filter(item => item.title);
   if (!items.length) throw new Error('Google Trends RSS returned no trends');
 
-  const blocked = /\b(vs|scorecard|standings|match|fixture|live score)\b/i;
-  const candidates = items.filter(item => !blocked.test(item.title)).slice(0, 20);
-  return { source: TRENDS_URL, fetchedAt: new Date().toISOString(), candidates: candidates.length ? candidates : items.slice(0, 20) };
+  const blocked = /\b(vs|scorecard|standings|match|fixture|live score|result|results|odds)\b/i;
+  const candidates = items.filter(item => !blocked.test(item.title) && isUsableForHindiReel(item.title)).slice(0, 20);
+
+  // If today's feed contains mostly regional-script or sports-only terms, use a
+  // stable Hindi/English fallback topic instead of generating a broken Reel.
+  const safeFallback = [
+    { title: 'Human Behaviour', traffic: '', pubDate: '' },
+    { title: 'Psychology Facts', traffic: '', pubDate: '' },
+    { title: 'Memory', traffic: '', pubDate: '' }
+  ];
+  return { source: TRENDS_URL, fetchedAt: new Date().toISOString(), candidates: candidates.length ? candidates : safeFallback };
 }
 
 module.exports = { getGoogleTrends };
