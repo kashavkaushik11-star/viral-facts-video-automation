@@ -60,23 +60,23 @@ if n != 1: raise SystemExit('subtitle source replacement failed')
 s, n = re.subn(r'FontName=DejaVu Sans', 'FontName=Noto Sans Devanagari', s, count=1)
 if n != 1: raise SystemExit('subtitle font replacement failed')
 
-# One hero image is reused for all three motion clips so the person/wardrobe/location cannot randomly change.
+# Generate three different topic-specific images. The visual identity stays documentary-like,
+# but each scene must actually show a different part of the same trending topic.
 loop_pattern = r'''  for \(let i = 0; i < 3; i\+\+\) \{[\s\S]*?  \}\n\n  console\.log\('Joining 3 x 10-second scenes into exactly 30 seconds\.\.\.'\);'''
-loop_replacement = '''  console.log('Generating one consistent hero image for all three scenes...');
-  const heroPrompt = `Photorealistic cinematic social-media hero image for a vertical 9:16 Hindi fact Reel. One believable Indian young adult as the only main subject, centered, natural face, consistent black casual shirt, realistic smartphone-in-hand everyday setting, premium documentary-film photography, natural indoor window light, shallow depth of field, clean background, no readable text, no letters, no numbers, no logos, no watermark, no captions, no collage. ${scenePrompts[0]}`;
-  await generateImage(heroPrompt, imagePaths[0]);
-
+loop_replacement = '''  console.log('Generating 3 topic-specific visual scenes...');
   for (let i = 0; i < 3; i++) {
-    if (i > 0) fs.copyFileSync(imagePaths[0], imagePaths[i]);
-    console.log(`Generating 4-second motion ${i + 1}/3 from the same hero image...`);
-    pythonVideo(imagePaths[0], scenePrompts[i], motionPaths[i]);
+    const topicScenePrompt = `Photorealistic cinematic documentary/news visual for a vertical 9:16 Hindi trending-topic Reel. This image MUST visually represent the exact subject and action described below. No generic phone-scrolling, no generic psychology, no unrelated stock people, no abstract symbols, no fake readable text, no fake logos, no watermark. Natural realistic lighting, believable environment, editorial photography, strong subject clarity. Scene ${i + 1} of 3: ${scenePrompts[i]}`;
+    console.log(`Generating topic-specific image ${i + 1}/3...`);
+    await generateImage(topicScenePrompt, imagePaths[i]);
+    console.log(`Generating 4-second motion ${i + 1}/3...`);
+    pythonVideo(imagePaths[i], scenePrompts[i], motionPaths[i]);
     console.log(`Making scene ${i + 1} exactly ${SCENE_DURATION} seconds...`);
     buildTenSecondClip(motionPaths[i], sceneVideoPaths[i]);
   }
 
   console.log('Joining 3 x 10-second scenes into exactly 30 seconds...');'''
 s, n = re.subn(loop_pattern, loop_replacement, s, count=1)
-if n != 1: raise SystemExit(f'hero image loop replacement failed: {n}')
+if n != 1: raise SystemExit(f'topic image loop replacement failed: {n}')
 
 p.write_text(s, encoding='utf-8')
-print('Patched: consistent hero image, Devanagari subtitles, and non-looping 10s motion.')
+print('Patched: topic-specific scenes, Devanagari subtitles, and non-looping 10s motion.')
