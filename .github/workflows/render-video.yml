@@ -11,8 +11,8 @@ on:
         description: Hindi narration text
         required: true
         type: string
-      audio_url:
-        description: Public URL of generated voice MP3
+      audio_base64:
+        description: Base64 WAV/MP3 audio
         required: true
         type: string
   repository_dispatch:
@@ -38,11 +38,19 @@ jobs:
         env:
           TITLE: ${{ github.event.inputs.title || github.event.client_payload.title }}
           SCRIPT: ${{ github.event.inputs.script || github.event.client_payload.script }}
-          AUDIO_URL: ${{ github.event.inputs.audio_url || github.event.client_payload.audio_url }}
+          AUDIO_URL: ${{ github.event.client_payload.audio_url }}
+          AUDIO_BASE64: ${{ github.event.inputs.audio_base64 || github.event.client_payload.audio_base64 }}
         run: |
           printf '%s' "$TITLE" > title.txt
           printf '%s' "$SCRIPT" > script.txt
-          curl -L --fail --retry 3 "$AUDIO_URL" -o voice.mp3
+          if [ -n "$AUDIO_BASE64" ]; then
+            printf '%s' "$AUDIO_BASE64" | base64 -d > voice.wav
+          elif [ -n "$AUDIO_URL" ]; then
+            curl -L --fail --retry 3 "$AUDIO_URL" -o voice.mp3
+          else
+            echo "No audio supplied" >&2
+            exit 1
+          fi
 
       - name: Render 9:16 MP4
         run: |
@@ -55,8 +63,16 @@ jobs:
           if gh release view latest >/dev/null 2>&1; then
             gh release delete latest --cleanup-tag --yes
           fi
-          gh release create latest output.mp4 --title "Latest Auto Video" --notes "Latest generated video. Replaced automatically on each run."
+          gh release create latest output/output.mp4 --title "Latest Auto Video" --notes "Latest generated video. Replaced automatically on each run."
 
-      - name: Summary
+      - name: Notify Make
+        if: ${{ always() && github.event.client_payload.callback_url != '' }}
+        env:
+          CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
+          STATUS: ${{ job.status }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
         run: |
-          echo "Video ready: https://github.com/${{ github.repository }}/releases/download/latest/output.mp4" >> "$GITHUB_STEP_SUMMARY"
+          curl -L --fail -X POST "$CALLBACK_URL" \
+            -H 'Content-Type: application/json' \
+            -d "{\"status\":\"$STATUS\",\"run_id\":\"$RUN_ID\",\"repository\":\"$REPO\",\"video_url\":\"https://github.com/$REPO/releases/download/latest/output.mp4\"}"
