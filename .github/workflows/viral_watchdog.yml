@@ -47,8 +47,7 @@ jobs:
           due_slots = [s for s in slots if now >= s + timedelta(minutes=45)]
 
           for slot in due_slots:
-              # A run created reasonably close to this slot is considered its
-              # run. Manual recovery runs are also accepted as successful cover.
+              # First prefer a scheduled/manual run close to the slot.
               candidates = []
               for r in runs:
                   created = datetime.fromisoformat(r['createdAt'].replace('Z', '+00:00'))
@@ -73,7 +72,7 @@ jobs:
 
               label = slot.strftime('%Y-%m-%d %H:%M UTC')
               if covered:
-                  print(f'OK: slot {label} is covered.')
+                  print(f'OK: slot {label} has a successful workflow run.')
               elif active:
                   print(f'WAIT: slot {label} already has an active run.')
               elif failed:
