@@ -88,20 +88,31 @@ jobs:
                   print(f'WAIT: slot {label} already has an active scheduled run.')
                   continue
 
-              failed = next((r for _, _, r in candidates
-                             if r['status'] == 'completed'
-                             and r['conclusion'] in ('failure', 'timed_out', 'cancelled', 'startup_failure')), None)
+              failed_runs = [r for _, _, r in candidates
+                              if r['status'] == 'completed'
+                              and r['conclusion'] in ('failure', 'timed_out', 'cancelled', 'startup_failure')]
 
-              if failed:
-                  run_id = str(failed['databaseId'])
-                  fb_ok = facebook_post_succeeded(run_id)
-                  if fb_ok is True:
-                      print(f'NO RETRY: slot {label}; Facebook already succeeded in run {run_id}. '
-                            'Skipping rerun to prevent duplicate Facebook posts.')
-                  elif fb_ok is None:
-                      print(f'NO RETRY: slot {label}; cannot verify Facebook status for run {run_id}. '
-                            'Skipping rerun to avoid a possible duplicate post.')
-                  else:
+              if failed_runs:
+                  verified_no_facebook_post = []
+                  uncertain_facebook_status = False
+                  for r in failed_runs:
+                      run_id = str(r['databaseId'])
+                      fb_ok = facebook_post_succeeded(run_id)
+                      if fb_ok is True:
+                          print(f'NO RETRY: slot {label}; Facebook already succeeded in run {run_id}. '
+                                'Skipping retries to prevent duplicate Facebook posts.')
+                          uncertain_facebook_status = True
+                          break
+                      if fb_ok is None:
+                          print(f'NO RETRY: slot {label}; cannot verify Facebook status for run {run_id}. '
+                                'Skipping retries to avoid a possible duplicate post.')
+                          uncertain_facebook_status = True
+                          break
+                      verified_no_facebook_post.append(r)
+
+                  if not uncertain_facebook_status and verified_no_facebook_post:
+                      failed = verified_no_facebook_post[0]
+                      run_id = str(failed['databaseId'])
                       print(f'RETRY: slot {label} failed before Facebook success in run {run_id}; '
                             're-running failed jobs.')
                       subprocess.check_call(['gh', 'run', 'rerun', run_id, '--failed', '--repo', repo])
