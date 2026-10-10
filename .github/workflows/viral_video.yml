@@ -84,7 +84,10 @@ jobs:
           echo "Facebook posting failed after 5 attempts."
           exit 1
 
+      # YouTube OAuth failures must not mark the whole publishing run as failed:
+      # the Facebook post may already be live, and the watchdog must not duplicate it.
       - name: Auto-post same video to YouTube Shorts
+        continue-on-error: true
         if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
